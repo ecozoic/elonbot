@@ -1,25 +1,22 @@
 const OpenAI = require('openai');
 
-const apiKey = process.env.API_KEY;
+const apiKey = process.env.X_API_KEY;
 
 const openai = new OpenAI({
     apiKey,
+    baseURL: 'https://api.x.ai/v1'
 });
 
 async function imagine(prompt) {
     console.log(prompt);
 
     const response = await openai.images.generate({
-        model: 'dall-e-3',
+        model: 'grok-2-image',
         prompt,
-        quality: 'hd',
-        response_format: 'b64_json',
-        n: 1,
-        size: '1024x1024',
+        response_format: 'b64_json'
     });
-
+    
     const answer = response.data[0].b64_json;
-    //console.log(answer);
 
     return answer;
 }
