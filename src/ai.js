@@ -11,7 +11,7 @@ async function imagine(prompt) {
     console.log(prompt);
 
     const response = await openai.images.generate({
-        model: 'grok-2-image',
+        model: 'grok-imagine-image-pro',
         prompt,
         response_format: 'b64_json'
     });
