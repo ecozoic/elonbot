@@ -172,7 +172,27 @@ async function getPokemon(id) {
   }
 }
 
+async function getPokemonLeaderboard() {
+    const usersRef = db.collection("users");
+    const snapshot = await usersRef.get();
+    let results = snapshot.docs.map(doc => ({
+        authorId: doc.id,
+        score: compactStringToBooleans(doc.data().pokemon).filter(x => x !== 0).length
+    }));
+    results.sort((a, b) => b.score - a.score);
+    results = results.slice(0, 11);
+    return results.map((result, idx) => `${getEmoji(idx)}<@${result.authorId}> - ${result.score} Pokémon`).join('\n');
+}
+
+function getEmoji(idx) {
+    if (idx === 0) {
+        return '⭐';
+    }
+    return '';
+}
+
 module.exports = {
     handlePokemonGame,
     getPokemonStats,
+    getPokemonLeaderboard,
 };

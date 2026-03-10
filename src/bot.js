@@ -8,7 +8,7 @@ const {
 } = require("discord.js");
 const crypto = require("crypto");
 const { imagine } = require("./ai.js");
-const { getPokemonStats, handlePokemonGame } = require("./pokemon.js");
+const { getPokemonStats, handlePokemonGame, getPokemonLeaderboard } = require("./pokemon.js");
 
 const token = process.env.BOT_TOKEN;
 
@@ -61,9 +61,19 @@ client.on(Events.MessageCreate, async (message) => {
         .fetch(message.channelId)
         .then((channel) => channel.send(err.message));
     }
-  } else if (message.channel.isThread() && message.channelId === POKEMON_THREAD_ID && !message.author.bot) {
+  } else if (
+    message.channel.isThread() &&
+    message.channelId === POKEMON_THREAD_ID &&
+    !message.author.bot
+  ) {
     try {
-      if (message.content.startsWith("/pokemon")) {
+      if (message.content.startsWith("/pokemon leaderboard")) {
+        const response = await getPokemonLeaderboard();
+        if (response != null) {
+          client.channels.fetch(message.channelId)
+            .then((channel) => channel.send(response));
+        }
+      } else if (message.content.startsWith("/pokemon")) {
         const response = await getPokemonStats(message.author.id);
         if (response != null) {
           client.channels.fetch(message.channelId)
