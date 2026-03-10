@@ -81,7 +81,10 @@ async function getPokemonStats(authorId) {
 }
 
 function shouldCatch(authorId) {
-    if (Math.random() >= POKEMON_CATCH_RATE) {
+    const rng = Math.random();
+    console.log(`rng: ${rng}, rate: ${POKEMON_CATCH_RATE}`);
+    if (rng >= POKEMON_CATCH_RATE) {
+        console.log(`bad luck ${authorId}`);
         return false;
     }
     const now = Date.now();
