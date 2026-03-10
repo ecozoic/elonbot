@@ -61,7 +61,7 @@ client.on(Events.MessageCreate, async (message) => {
         .fetch(message.channelId)
         .then((channel) => channel.send(err.message));
     }
-  } else if (message.channel.isThread() && message.channelId === POKEMON_THREAD_ID) {
+  } else if (message.channel.isThread() && message.channelId === POKEMON_THREAD_ID && !message.author.bot) {
     try {
       if (message.content.startsWith("/pokemon")) {
         const response = await getPokemonStats(message.author.id);
@@ -70,7 +70,7 @@ client.on(Events.MessageCreate, async (message) => {
             .then((channel) => channel.send(`<@${message.author.id}> - ${response}`));
         }
       } else {
-        const embed = await handlePokemonGame(message.author.id);
+        const embed = await handlePokemonGame(message.author.id, message.author.displayName);
         if (embed != null) {
           client.channels.fetch(message.channelId)
             .then((channel) => channel.send({ embeds: [embed] }));

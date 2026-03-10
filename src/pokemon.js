@@ -2,14 +2,15 @@ const { EmbedBuilder } = require('discord.js');
 
 const DB = new Map();
 
-const POKEMON_CATCH_RATE = 0.1;
+const POKEMON_CATCH_RATE = 0.25;
 
-async function handlePokemonGame(authorId) {
+async function handlePokemonGame(authorId, displayName) {
     if (!DB.has(authorId)) {
         console.log(`No entry for ${authorId}, initializing DB...`);
         initializeDB(authorId);
     }
     if (!shouldCatch()) {
+        console.log(`No catch for ${authorId}`);
         return null;
     }
     console.log(`Catching pokemon for ${authorId}`);
@@ -21,9 +22,9 @@ async function handlePokemonGame(authorId) {
     console.log(`Encoded data for ${authorId}: ${data}`);
     const bitArray = compactStringToBooleans(data);
     console.log(`Decoded data for ${authorId}: ${bitArray}`);
-    if (!bitArray[indexToFlip]) {
+    if (bitArray[indexToFlip] === 0) {
         console.log(`Flipping value at ${indexToFlip} for ${authorId}`);
-        bitArray[indexToFlip] = !bitArray[indexToFlip];
+        bitArray[indexToFlip] = 1;
         console.log(`New decoded data for ${authorId}: ${bitArray}`);
         const encoded = booleansToCompactString(bitArray);
         console.log(`New Encoded data for ${authorId}: ${data}`);
@@ -33,7 +34,7 @@ async function handlePokemonGame(authorId) {
     console.log('pokemon', pokemon);
     const embed = new EmbedBuilder()
         .setColor('#FF0000')
-        .setTitle(`${authorId} caught ${pokemon.name}!`)
+        .setTitle(`${displayName} caught ${pokemon.name}!`)
         .setDescription(`Type: ${pokemon.types.map(t => t.type.name).join(', ')}`)
         .setImage(pokemon.picture)
         .setThumbnail('https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png')
@@ -109,7 +110,7 @@ function compactStringToBooleans(base64url, expectedLength = 151) {
     for (let i = 0; i < expectedLength; i++) {
         const byteIndex = Math.floor(i / 8);
         const bitIndex  = 7 - (i % 8);
-        flags[i] = (bytes[byteIndex] & (1 << bitIndex)) !== 0;
+        flags[i] = (bytes[byteIndex] & (1 << bitIndex));
     }
 
     return flags;
