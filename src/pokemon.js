@@ -103,7 +103,7 @@ async function initializeDB(authorId, docRef) {
     console.log(`Decoded data for ${authorId}: ${bitArray}`);
     const data = booleansToCompactString(bitArray);
     console.log(`Encoded data for ${authorId}: ${data}`);
-    await docRef.update({
+    await docRef.set({
         pokemon: data,
     });
 }
