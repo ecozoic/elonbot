@@ -1,13 +1,27 @@
 const { EmbedBuilder } = require('discord.js');
+const { initializeApp } = require("firebase/app");
+const { getFirestore, collection, doc, setDoc, getDoc } = require("firebase/firestore");
 
-const DB = new Map();
+const firebaseConfig = {
+  apiKey: process.env.FIREBASE_API_KEY,
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.FIREBASE_APP_ID,
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 const POKEMON_CATCH_RATE = 0.25;
 
 async function handlePokemonGame(authorId, displayName) {
-    if (!DB.has(authorId)) {
+    const docRef = doc(db, "users", authorId);
+    let docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
         console.log(`No entry for ${authorId}, initializing DB...`);
-        initializeDB(authorId);
+        await initializeDB(authorId, docRef);
+        docSnap = await getDoc(docRef);
     }
     if (!shouldCatch()) {
         console.log(`No catch for ${authorId}`);
@@ -18,7 +32,7 @@ async function handlePokemonGame(authorId, displayName) {
     console.log(`index for ${authorId}: ${indexToFlip}`);
     const pokemonToCatch = indexToFlip + 1;
     console.log(`pokemon number for ${authorId}: ${pokemonToCatch}`);
-    const data = DB.get(authorId);
+    const data = docSnap.data().pokemon;
     console.log(`Encoded data for ${authorId}: ${data}`);
     const bitArray = compactStringToBooleans(data);
     console.log(`Decoded data for ${authorId}: ${bitArray}`);
@@ -28,7 +42,9 @@ async function handlePokemonGame(authorId, displayName) {
         console.log(`New decoded data for ${authorId}: ${bitArray}`);
         const encoded = booleansToCompactString(bitArray);
         console.log(`New Encoded data for ${authorId}: ${data}`);
-        DB.set(authorId, encoded);
+        await setDoc(docRef, {
+            pokemon: encoded,
+        });
     }
     const pokemon = await getPokemon(pokemonToCatch);
     console.log('pokemon', pokemon);
@@ -45,10 +61,12 @@ async function handlePokemonGame(authorId, displayName) {
 
 async function getPokemonStats(authorId) {
     console.log(`Query for authorId ${authorId}`);
-    if (!DB.has(authorId)) {
+    const docRef = doc(db, "users", authorId);
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
         return "You've caught 0 Pokémon. Get to work champ";
     }
-    const data = DB.get(authorId);
+    const data = docSnap.data().pokemon;
     console.log(`Encoded data for ${authorId}: ${data}`);
     const bitArray = compactStringToBooleans(data);
     console.log(`Decoded data for ${authorId}: ${bitArray}`);
@@ -64,12 +82,14 @@ function shouldCatch() {
     return Math.random() < POKEMON_CATCH_RATE;
 }
 
-function initializeDB(authorId) {
+async function initializeDB(authorId, docRef) {
     const bitArray = Array(151).fill(0);
     console.log(`Decoded data for ${authorId}: ${bitArray}`);
     const data = booleansToCompactString(bitArray);
     console.log(`Encoded data for ${authorId}: ${data}`);
-    DB.set(authorId, data);
+    await setDoc(docRef, {
+        pokemon: data,
+    });
 }
 
 function booleansToCompactString(flags) {
