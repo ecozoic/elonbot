@@ -81,7 +81,7 @@ async function getPokemonStats(authorId) {
 }
 
 function shouldCatch(authorId) {
-    if (!Math.random() < POKEMON_CATCH_RATE) {
+    if (Math.random() >= POKEMON_CATCH_RATE) {
         return false;
     }
     const now = Date.now();
