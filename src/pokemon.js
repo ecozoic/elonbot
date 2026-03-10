@@ -14,6 +14,8 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 const POKEMON_CATCH_RATE = 0.25;
+const POKEMON_CATCH_ICD = 5; // seconds
+const COOLDOWNS = new Map(); // userID -> timestamp when cooldown ends
 
 async function handlePokemonGame(authorId, displayName) {
     const docRef = doc(db, "users", authorId);
@@ -23,7 +25,7 @@ async function handlePokemonGame(authorId, displayName) {
         await initializeDB(authorId, docRef);
         docSnap = await getDoc(docRef);
     }
-    if (!shouldCatch()) {
+    if (!shouldCatch(authorId)) {
         console.log(`No catch for ${authorId}`);
         return null;
     }
@@ -78,8 +80,20 @@ async function getPokemonStats(authorId) {
     return `You've caught ${count} Pokémon`;
 }
 
-function shouldCatch() {
-    return Math.random() < POKEMON_CATCH_RATE;
+function shouldCatch(authorId) {
+    if (!Math.random() < POKEMON_CATCH_RATE) {
+        return false;
+    }
+    const now = Date.now();
+    const cooldownMs = POKEMON_CATCH_ICD * 1000;
+    const cooldownEnd = COOLDOWNS.get(authorId);
+    if (cooldownEnd && now < cooldownEnd) {
+        const remaining = Math.ceil((cooldownEnd - now) / 1000);
+        console.log(`${authorId} is on cooldown for ${remaining} more seconds`);
+        return false;
+    }
+    COOLDOWNS.set(authorId, now + cooldownMs);
+    return true;
 }
 
 async function initializeDB(authorId, docRef) {
