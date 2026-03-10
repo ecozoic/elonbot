@@ -67,7 +67,7 @@ client.on(Events.MessageCreate, async (message) => {
         const response = await getPokemonStats(message.author.id);
         if (response != null) {
           client.channels.fetch(message.channelId)
-            .then((channel) => channel.send(response));
+            .then((channel) => channel.send(`<@${message.author.id}> - ${response}`));
         }
       } else {
         const embed = await handlePokemonGame(message.author.id);
