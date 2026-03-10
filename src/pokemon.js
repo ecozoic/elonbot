@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require('discord.js');
-const { getFirestore, doc, setDoc, getDoc } = require("firebase/firestore");
+const { getFirestore } = require("firebase-admin/firestore");
 const admin = require('firebase-admin');
 
 const jsonString = Buffer.from(
@@ -17,12 +17,12 @@ const POKEMON_CATCH_ICD = 5; // seconds
 const COOLDOWNS = new Map(); // userID -> timestamp when cooldown ends
 
 async function handlePokemonGame(authorId, displayName) {
-    const docRef = doc(db, "users", authorId);
-    let docSnap = await getDoc(docRef);
-    if (!docSnap.exists()) {
+    const docRef = db.collection("users").doc(authorId);
+    let doc = await docRef.get();
+    if (!doc.exists) {
         console.log(`No entry for ${authorId}, initializing DB...`);
         await initializeDB(authorId, docRef);
-        docSnap = await getDoc(docRef);
+        doc = await docRef.get();
     }
     if (!shouldCatch(authorId)) {
         console.log(`No catch for ${authorId}`);
@@ -33,7 +33,7 @@ async function handlePokemonGame(authorId, displayName) {
     console.log(`index for ${authorId}: ${indexToFlip}`);
     const pokemonToCatch = indexToFlip + 1;
     console.log(`pokemon number for ${authorId}: ${pokemonToCatch}`);
-    const data = docSnap.data().pokemon;
+    const data = doc.data().pokemon;
     console.log(`Encoded data for ${authorId}: ${data}`);
     const bitArray = compactStringToBooleans(data);
     console.log(`Decoded data for ${authorId}: ${bitArray}`);
@@ -43,7 +43,7 @@ async function handlePokemonGame(authorId, displayName) {
         console.log(`New decoded data for ${authorId}: ${bitArray}`);
         const encoded = booleansToCompactString(bitArray);
         console.log(`New Encoded data for ${authorId}: ${data}`);
-        await setDoc(docRef, {
+        await docRef.update({
             pokemon: encoded,
         });
     }
@@ -62,12 +62,12 @@ async function handlePokemonGame(authorId, displayName) {
 
 async function getPokemonStats(authorId) {
     console.log(`Query for authorId ${authorId}`);
-    const docRef = doc(db, "users", authorId);
-    const docSnap = await getDoc(docRef);
-    if (!docSnap.exists()) {
+    const docRef = db.collection("users").doc(authorId);
+    const doc = await docRef.get();;
+    if (!doc.exists) {
         return "You've caught 0 Pokémon. Get to work champ";
     }
-    const data = docSnap.data().pokemon;
+    const data = doc.data().pokemon;
     console.log(`Encoded data for ${authorId}: ${data}`);
     const bitArray = compactStringToBooleans(data);
     console.log(`Decoded data for ${authorId}: ${bitArray}`);
@@ -103,7 +103,7 @@ async function initializeDB(authorId, docRef) {
     console.log(`Decoded data for ${authorId}: ${bitArray}`);
     const data = booleansToCompactString(bitArray);
     console.log(`Encoded data for ${authorId}: ${data}`);
-    await setDoc(docRef, {
+    await docRef.update({
         pokemon: data,
     });
 }
