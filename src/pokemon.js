@@ -110,7 +110,7 @@ function compactStringToBooleans(base64url, expectedLength = 151) {
     for (let i = 0; i < expectedLength; i++) {
         const byteIndex = Math.floor(i / 8);
         const bitIndex  = 7 - (i % 8);
-        flags[i] = (bytes[byteIndex] & (1 << bitIndex));
+        flags[i] = (bytes[byteIndex] & (1 << bitIndex)) === 0 ? 0 : 1;
     }
 
     return flags;
