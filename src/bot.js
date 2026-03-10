@@ -8,6 +8,7 @@ const {
 } = require("discord.js");
 const crypto = require("crypto");
 const { imagine } = require("./ai.js");
+const { getPokemonStats, handlePokemonGame } = require("./pokemon.js");
 
 const token = process.env.BOT_TOKEN;
 
@@ -21,6 +22,7 @@ const client = new Client({
 
 const ENABLE_FX_TWITTER = true;
 const ENABLE_DREAM = true;
+const POKEMON_THREAD_ID = '1364333853220667484';
 
 client.on(Events.MessageCreate, async (message) => {
   if (
@@ -45,7 +47,6 @@ client.on(Events.MessageCreate, async (message) => {
       .then((channel) => channel.send("shit's fucked"));
   } else if (ENABLE_DREAM && message.content.startsWith("/dream")) {
     const prompt = message.content.substring(7);
-
     try {
       const b64 = await imagine(prompt);
       const buffer = new Buffer.from(b64, "base64");
@@ -55,6 +56,26 @@ client.on(Events.MessageCreate, async (message) => {
       client.channels
         .fetch(message.channelId)
         .then((channel) => channel.send({ files: [attach] }));
+    } catch (err) {
+      client.channels
+        .fetch(message.channelId)
+        .then((channel) => channel.send(err.message));
+    }
+  } else if (message.channel.isThread() && message.channelId === POKEMON_THREAD_ID) {
+    try {
+      if (message.content.startsWith("/pokemon")) {
+        const response = await getPokemonStats(message.author.id);
+        if (response != null) {
+          client.channels.fetch(message.channelId)
+            .then((channel) => channel.send(response));
+        }
+      } else {
+        const embed = await handlePokemonGame(message.author.id);
+        if (embed != null) {
+          client.channels.fetch(message.channelId)
+            .then((channel) => channel.send({ embeds: [embed] }));
+        }
+      }
     } catch (err) {
       client.channels
         .fetch(message.channelId)
