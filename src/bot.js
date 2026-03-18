@@ -7,7 +7,7 @@ const {
   AttachmentBuilder,
 } = require("discord.js");
 const crypto = require("crypto");
-const { imagine } = require("./ai.js");
+const { imagine, answerQuestion } = require("./ai.js");
 const { getPokemonStats, handlePokemonGame, getPokemonLeaderboard } = require("./pokemon.js");
 
 const token = process.env.BOT_TOKEN;
@@ -60,6 +60,18 @@ client.on(Events.MessageCreate, async (message) => {
       client.channels
         .fetch(message.channelId)
         .then((channel) => channel.send(err.message));
+    }
+  }  else if (message.content.toLowerCase().startsWith("hey elon")) {
+    try {
+      const response = await answerQuestion(message.content.substring(10));
+      if (response != null) {
+        client.channels.fetch(message.channelId)
+          .then((channel) => channel.send(response));
+      }
+    } catch (err) {
+        client.channels
+          .fetch(message.channelId)
+          .then((channel) => channel.send(err.message));
     }
   } else if (
     message.channel.isThread() &&
