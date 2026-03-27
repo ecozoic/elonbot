@@ -12,7 +12,8 @@ const app = admin.initializeApp({
 });
 const db = getFirestore(app);
 
-const POKEMON_CATCH_RATE = 0.25;
+const POKEMON_CATCH_RATE = 0.20;
+const SHINY_CATCH_RATE = 0.05;
 const POKEMON_CATCH_ICD = 5; // seconds
 const COOLDOWNS = new Map(); // userID -> timestamp when cooldown ends
 
@@ -51,7 +52,7 @@ async function handlePokemonGame(authorId, displayName) {
     console.log('pokemon', pokemon);
     const embed = new EmbedBuilder()
         .setColor('#FF0000')
-        .setTitle(`${displayName} caught ${pokemon.name}!`)
+        .setTitle(pokemon.shiny ? `${displayName} caught 🌟 SHINY 🌟 ${pokemon.name}!` : `${displayName} caught ${pokemon.name}!`)
         .setDescription(`Type: ${pokemon.types.map(t => t.type.name).join(', ')}`)
         .setImage(pokemon.picture)
         .setThumbnail('https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png')
@@ -158,13 +159,21 @@ async function getPokemon(id) {
     if (!response.ok) throw new Error('Pokémon not found');
     
     const data = await response.json();
+    let isShiny = false;
+    const rng = Math.random();
+    if (rng <= SHINY_CATCH_RATE) {
+        console.log(`SHINY! ${authorId}`);
+        isShiny = true;
+    }
     
     return {
       name: data.name.charAt(0).toUpperCase() + data.name.slice(1),  // Capitalize
       id: data.id,
       types: data.types,
-      picture: data.sprites.other?.official_artwork?.front_default || 
-               data.sprites.front_default  // fallback to classic sprite
+      picture: isShiny ?
+        (data.sprites.other?.official_artwork?.front_shiny || data.sprites.front_shiny) :
+        (data.sprites.other?.official_artwork?.front_default || data.sprites.front_default),
+      shiny: isShiny,
     };
   } catch (error) {
     console.error(error);
@@ -191,8 +200,27 @@ function getEmoji(idx) {
     return '';
 }
 
+async function queryPokemon(authorId, pokemonId) {
+    console.log(`Query for authorId ${authorId}, pokemonId ${pokemonId}`);
+    const docRef = db.collection("users").doc(authorId);
+    const doc = await docRef.get();;
+    if (!doc.exists) {
+        return "You've caught 0 Pokémon. Get to work champ";
+    }
+    const data = doc.data().pokemon;
+    console.log(`Encoded data for ${authorId}: ${data}`);
+    const bitArray = compactStringToBooleans(data);
+    console.log(`Decoded data for ${authorId}: ${bitArray}`);
+    const pokemon = await getPokemon(pokemonId);
+    if (bitArray[pokemonId - 1]) {
+        return `You've caught ${pokemon.name}!`;
+    }
+    return `You haven't caught ${pokemon.name}`;
+}
+
 module.exports = {
     handlePokemonGame,
     getPokemonStats,
     getPokemonLeaderboard,
+    queryPokemon,
 };
