@@ -50,6 +50,10 @@ async function handlePokemonGame(authorId, displayName) {
     }
     const pokemon = await getPokemon(pokemonToCatch);
     console.log('pokemon', pokemon);
+    return getEmbed(displayName, pokemon);
+}
+
+function getEmbed(displayName, pokemon) {
     const embed = new EmbedBuilder()
         .setColor('#FF0000')
         .setTitle(pokemon.shiny ? `${displayName} caught 🌟 SHINY 🌟 ${pokemon.name}!` : `${displayName} caught ${pokemon.name}!`)
@@ -153,7 +157,7 @@ function compactStringToBooleans(base64url, expectedLength = 151) {
     return flags;
 }
 
-async function getPokemon(id) {
+async function getPokemon(id, shinyOverride = false) {
   try {
     const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}/`);
     if (!response.ok) throw new Error('Pokémon not found');
@@ -161,7 +165,7 @@ async function getPokemon(id) {
     const data = await response.json();
     let isShiny = false;
     const rng = Math.random();
-    if (rng <= SHINY_CATCH_RATE) {
+    if (rng <= SHINY_CATCH_RATE || shinyOverride) {
         console.log(`SHINY!`);
         isShiny = true;
     }
@@ -218,9 +222,15 @@ async function queryPokemon(authorId, pokemonId) {
     return `You haven't caught ${pokemon.name}`;
 }
 
+async function debugPokemon(displayName, pokemonIndex, isShiny) {
+    const pokemon = await getPokemon(pokemonIndex, isShiny);
+    return getEmbed(displayName, pokemon);
+}
+
 module.exports = {
     handlePokemonGame,
     getPokemonStats,
     getPokemonLeaderboard,
     queryPokemon,
+    debugPokemon,
 };

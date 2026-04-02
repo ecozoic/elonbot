@@ -8,7 +8,7 @@ const {
 } = require("discord.js");
 const crypto = require("crypto");
 const { imagine, answerQuestion } = require("./ai.js");
-const { getPokemonStats, handlePokemonGame, getPokemonLeaderboard, queryPokemon } = require("./pokemon.js");
+const { getPokemonStats, handlePokemonGame, getPokemonLeaderboard, queryPokemon, debugPokemon } = require("./pokemon.js");
 
 const token = process.env.BOT_TOKEN;
 
@@ -96,6 +96,13 @@ client.on(Events.MessageCreate, async (message) => {
         if (response != null) {
           client.channels.fetch(message.channelId)
             .then((channel) => channel.send(`<@${message.author.id}> - ${response}`));
+        }
+      } else if (message.content.startsWith("/pokemon debug") && message.author.id === '179704343619043328') {
+        const [displayName, pokemonIndex, isShiny] = message.content.slice(15).split(',');
+        const embed = await debugPokemon(displayName, pokemonIndex, isShiny === 'shiny');
+        if (embed != null) {
+          client.channels.fetch(message.channelId)
+            .then((channel) => channel.send({ embeds: [embed] }));
         }
       } else if (message.content.startsWith("/pokemon")) {
         const response = await getPokemonStats(message.author.id);
