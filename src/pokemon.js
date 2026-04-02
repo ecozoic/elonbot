@@ -162,7 +162,7 @@ async function getPokemon(id) {
     let isShiny = false;
     const rng = Math.random();
     if (rng <= SHINY_CATCH_RATE) {
-        console.log(`SHINY! ${authorId}`);
+        console.log(`SHINY!`);
         isShiny = true;
     }
     
