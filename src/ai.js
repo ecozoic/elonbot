@@ -25,7 +25,7 @@ async function answerQuestion(prompt) {
     console.log(prompt);
 
     const response = await openai.chat.completions.create({
-        model: 'grok-4',
+        model: 'grok-4.1-fast',
         messages: [
             {
                 role: 'system',

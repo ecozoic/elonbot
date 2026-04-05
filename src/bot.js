@@ -63,6 +63,9 @@ client.on(Events.MessageCreate, async (message) => {
     }
   }  else if (message.content.toLowerCase().startsWith("hey elon")) {
     try {
+      await client.channels
+        .fetch(message.channelId)
+        .then((channel) => channel.sendTyping());
       const response = await answerQuestion(message.content.substring(10));
       if (response != null) {
         client.channels.fetch(message.channelId)
