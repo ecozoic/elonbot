@@ -8,7 +8,7 @@ const {
 } = require("discord.js");
 const crypto = require("crypto");
 const { imagine, answerQuestion } = require("./ai.js");
-const { getPokemonStats, handlePokemonGame, getPokemonLeaderboard, queryPokemon, debugPokemon } = require("./pokemon.js");
+const { getPokemonStats, handlePokemonGame, getPokemonLeaderboard, queryPokemon, debugPokemon, doPokemonBattle } = require("./pokemon.js");
 
 const token = process.env.BOT_TOKEN;
 
@@ -23,6 +23,8 @@ const client = new Client({
 const ENABLE_FX_TWITTER = true;
 const ENABLE_DREAM = true;
 const POKEMON_THREAD_ID = '1364333853220667484';
+
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 client.on(Events.MessageCreate, async (message) => {
   if (
@@ -106,6 +108,29 @@ client.on(Events.MessageCreate, async (message) => {
         if (embed != null) {
           client.channels.fetch(message.channelId)
             .then((channel) => channel.send({ embeds: [embed] }));
+        }
+      } else if (message.content.startsWith("/pokemon battle")) {
+        if (message.mentions.users.size === 0) {
+          client.channels.fetch(message.channelId)
+            .then((channel) => channel.send('Must specify an opponent'));
+        } else if (message.mentions.users.size > 1) {
+          client.channels.fetch(message.channelId)
+            .then((channel) => channel.send('Must specify one opponent'));
+        } else {
+          const opponent = message.mentions.users.first();
+          if (opponent.id === message.author.id) {
+            client.channels.fetch(message.channelId)
+            .then((channel) => channel.send('Cannot battle yourself'));
+          } else {
+            const {response, embed, attachment} = await doPokemonBattle({id: message.author.id, displayName: message.author.displayName}, {id: opponent.id, displayName: opponent.displayName });
+            if (embed != null && attachment != null && response != null) {
+              client.channels.fetch(message.channelId)
+                .then((channel) => channel.send({ embeds: [embed], files: [attachment] }));
+              await delay(1000);
+              client.channels.fetch(message.channelId)
+                .then((channel) => channel.send(response));
+            }
+          }
         }
       } else if (message.content.startsWith("/pokemon")) {
         const response = await getPokemonStats(message.author.id);

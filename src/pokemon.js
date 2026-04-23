@@ -1,6 +1,9 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const {createCanvas, loadImage} = require('canvas');
 const { getFirestore } = require("firebase-admin/firestore");
 const admin = require('firebase-admin');
+
+const TYPE_CHART = require('./pokemon-type-chart.js');
 
 const jsonString = Buffer.from(
     process.env.FIREBASE_CREDENTIALS_BASE64,
@@ -66,22 +69,30 @@ function getEmbed(displayName, pokemon) {
 }
 
 async function getPokemonStats(authorId) {
-    console.log(`Query for authorId ${authorId}`);
-    const docRef = db.collection("users").doc(authorId);
-    const doc = await docRef.get();;
-    if (!doc.exists) {
+    const bitArray = await getPokemonForUser(authorId);
+    if (bitArray == null) {
         return "You've caught 0 Pokémon. Get to work champ";
     }
-    const data = doc.data().pokemon;
-    console.log(`Encoded data for ${authorId}: ${data}`);
-    const bitArray = compactStringToBooleans(data);
-    console.log(`Decoded data for ${authorId}: ${bitArray}`);
     const count = bitArray.filter(x => x !== 0).length;
     console.log(`Caught count for ${authorId}: ${count}`);
     if (count === 151) {
         return "You've caught them all. You are the very best, like no one ever was!";
     }
     return `You've caught ${count} Pokémon`;
+}
+
+async function getPokemonForUser(userId) {
+    console.log(`Query for userId ${userId}`);
+    const docRef = db.collection("users").doc(userId);
+    const doc = await docRef.get();;
+    if (!doc.exists) {
+        return null;
+    }
+    const data = doc.data().pokemon;
+    console.log(`Encoded data for ${userId}: ${data}`);
+    const bitArray = compactStringToBooleans(data);
+    console.log(`Decoded data for ${userId}: ${bitArray}`);
+    return bitArray;
 }
 
 function shouldCatch(authorId) {
@@ -206,15 +217,10 @@ function getEmoji(idx) {
 
 async function queryPokemon(authorId, pokemonId) {
     console.log(`Query for authorId ${authorId}, pokemonId ${pokemonId}`);
-    const docRef = db.collection("users").doc(authorId);
-    const doc = await docRef.get();;
-    if (!doc.exists) {
+    const bitArray = await getPokemonForUser(authorId);
+    if (bitArray == null) {
         return "You've caught 0 Pokémon. Get to work champ";
     }
-    const data = doc.data().pokemon;
-    console.log(`Encoded data for ${authorId}: ${data}`);
-    const bitArray = compactStringToBooleans(data);
-    console.log(`Decoded data for ${authorId}: ${bitArray}`);
     const pokemon = await getPokemon(pokemonId);
     if (bitArray[pokemonId - 1]) {
         return `You've caught ${pokemon.name}!`;
@@ -227,10 +233,139 @@ async function debugPokemon(displayName, pokemonIndex, isShiny) {
     return getEmbed(displayName, pokemon);
 }
 
+async function doPokemonBattle(player1, player2) {
+    console.log(`Pokemon battle for ${player1.displayName} vs ${player2.displayName}`);
+    const p1Pokemon = await getPokemonForUser(player1.id);
+    if (p1Pokemon == null) {
+        return { response: `<@${player1.displayName}> has no Pokémon!`, embed: null };
+    }
+    const p2Pokemon = await getPokemonForUser(player2.id);
+    if (p2Pokemon == null) {
+        return { response: `<@${player2.displayName}> has no Pokémon!`, embed: null };
+    }
+
+    const p1PokemonToBattle = selectRandomPokemon(p1Pokemon);
+    const p2PokemonToBattle = selectRandomPokemon(p2Pokemon);
+
+    const pokemon1 = await getPokemon(p1PokemonToBattle);
+    const pokemon2 = await getPokemon(p2PokemonToBattle);
+
+    const {embed, attachment} = await getBattleEmbed(player1, pokemon1, player2, pokemon2);
+
+    const result = simulateQuickBattle(player1, pokemon1, player2, pokemon2);
+    const flavor = getEffectivenessFlavor(result.effWinnerOnLoser);
+
+    const message = 
+    `⚔️ **Quick Battle**\n` +
+    `**${pokemon1.name}** vs **${pokemon2.name}**\n` +
+    `${flavor}\n` +
+    `**${result.winner.displayName}** wins! 🔥`;
+
+    return {response: message, embed, attachment};
+}
+
+function getEffectiveness(attackerTypes, defenderTypes) {
+  let best = 1.0;
+
+  for (const aType of attackerTypes) {
+    let mult = 1.0;
+    for (const dType of defenderTypes) {
+      mult *= TYPE_CHART[aType]?.[dType] ?? 1.0;
+    }
+    if (mult > best) best = mult;
+  }
+
+  return best;
+}
+
+function getEffectivenessFlavor(multiplier) {
+  if (multiplier === 0) return "❌ **It's immune!**";
+  if (multiplier >= 2.0) return "🔥 **It's super effective!**";
+  if (multiplier <= 0.5) return "🌿 **It's not very effective...**";
+  return ""; // neutral = no extra text
+}
+
+function simulateQuickBattle(player1, pokemon1, player2, pokemon2) {
+  const typesA = pokemon1.types.map(t => t.type.name.toLowerCase());
+  const typesB = pokemon2.types.map(t => t.type.name.toLowerCase());
+
+  const effAonB = getEffectiveness(typesA, typesB);   // How strong A is against B
+  const effBonA = getEffectiveness(typesB, typesA);   // How strong B is against A
+
+  // Base weighted probability
+  let winProbA = (effAonB + effBonA) === 0 ? 0.5 : effAonB / (effAonB + effBonA);
+
+  // Add tiny randomness (±10% max swing, keeps it feeling fair)
+  const randomness = (Math.random() - 0.5) * 0.2; // -0.1 to +0.1
+  winProbA = Math.max(0.1, Math.min(0.9, winProbA + randomness));
+
+  const aWins = Math.random() < winProbA;
+  
+  return {
+    winner: aWins ? player1 : player2,
+    loser: aWins ? player2 : player1,
+    effWinnerOnLoser: aWins ? effAonB : effBonA,
+    effLoserOnWinner: aWins ? effBonA : effAonB
+  };
+}
+
+function selectRandomPokemon(bitArray) {
+    const ones = [];
+    for (let i = 0; i < bitArray.length; i++) {
+        if (bitArray[i] === 1) {
+            ones.push(i);
+        }
+    }
+    if (ones.length === 0) {
+        return null;
+    }
+    const randomPos = Math.floor(Math.random() * ones.length);
+    return ones[randomPos] + 1;
+}
+
+async function getBattleEmbed(player1, pokemon1, player2, pokemon2) {
+    const attachment = await combineTwoImages(pokemon1.picture, pokemon2.picture);
+    const embed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle(`${player1.displayName}'s ${pokemon1.name} vs. ${player2.displayName}'s ${pokemon2.name}`)
+        .setImage('attachment://combined-image.png')
+        .setURL('https://example.com')
+        .setThumbnail('https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png')
+        .setFooter({ text: 'Powered by PokéAPI' })
+        .setTimestamp();
+
+    return {embed, attachment};
+}
+
+async function combineTwoImages(url1, url2) {
+    // Load both images
+    const img1 = await loadImage(url1);
+    const img2 = await loadImage(url2);
+
+    const padding = 20;
+    const canvasWidth = img1.width + img2.width + padding;
+    const canvasHeight = Math.max(img1.height, img2.height);
+
+    const canvas = createCanvas(canvasWidth, canvasHeight);
+    const ctx = canvas.getContext('2d');
+
+    // Draw first image on the left
+    ctx.drawImage(img1, 0, 0);
+
+    // Draw second image on the right
+    ctx.drawImage(img2, img1.width + padding, 0);
+
+    // Convert to buffer for Discord
+    const buffer = canvas.toBuffer('image/png');
+
+    return new AttachmentBuilder(buffer, { name: 'combined-image.png' });
+}
+
 module.exports = {
     handlePokemonGame,
     getPokemonStats,
     getPokemonLeaderboard,
     queryPokemon,
     debugPokemon,
+    doPokemonBattle,
 };
