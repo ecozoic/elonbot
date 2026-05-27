@@ -8,7 +8,7 @@ const {
 } = require("discord.js");
 const crypto = require("crypto");
 const { imagine, answerQuestion } = require("./ai.js");
-const { getPokemonStats, handlePokemonGame, getPokemonLeaderboard, queryPokemon, debugPokemon, doPokemonBattle } = require("./pokemon.js");
+const { getPokemonStats, handlePokemonGame, getPokemonLeaderboard, queryPokemon, debugPokemon, doPokemonBattle, MAX_POKEMON_ID } = require("./pokemon.js");
 
 const token = process.env.BOT_TOKEN;
 
@@ -92,7 +92,7 @@ client.on(Events.MessageCreate, async (message) => {
         }
       } else if (message.content.startsWith("/pokemon count")) {
         const maybePokemonId = parseInt(message.content.slice(15), 10);
-        if (isNaN(maybePokemonId) || maybePokemonId <= 0 || maybePokemonId > 151) {
+        if (isNaN(maybePokemonId) || maybePokemonId <= 0 || maybePokemonId > MAX_POKEMON_ID) {
           client.channels.fetch(message.channelId)
             .then((channel) => channel.send(`<@${message.author.id}> - ${maybePokemonId} is invalid`));
           return;

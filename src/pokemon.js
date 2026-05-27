@@ -20,6 +20,83 @@ const SHINY_CATCH_RATE = 0.02;
 const POKEMON_CATCH_ICD = 5; // seconds
 const COOLDOWNS = new Map(); // userID -> timestamp when cooldown ends
 
+// Single source of truth for supported generations. Adding a new gen is one
+// more entry here: a Firestore field name and its inclusive PokéAPI id range.
+const GENS = [
+    { gen: 1, field: 'pokemon',  start: 1,   end: 151 },
+    { gen: 2, field: 'pokemon2', start: 152, end: 251 },
+];
+
+const MAX_POKEMON_ID = GENS[GENS.length - 1].end;
+const TOTAL_POKEMON = GENS.reduce((sum, g) => sum + genCount(g), 0);
+
+function genCount(g) {
+    return g.end - g.start + 1;
+}
+
+function genForId(pokemonId) {
+    return GENS.find(g => pokemonId >= g.start && pokemonId <= g.end) || null;
+}
+
+function emptyGenString(g) {
+    return booleansToCompactString(Array(genCount(g)).fill(0));
+}
+
+// Pick a pokemon uniformly across every supported gen, returning which gen it
+// belongs to, its local bit index within that gen's array, and its global id.
+function randomGlobalPokemon() {
+    let idx = Math.floor(Math.random() * TOTAL_POKEMON);
+    for (const g of GENS) {
+        const count = genCount(g);
+        if (idx < count) {
+            return { gen: g, localIndex: idx, pokemonId: g.start + idx };
+        }
+        idx -= count;
+    }
+}
+
+// Lazily backfill any gen fields missing from an existing user doc (migration).
+// Mutates and returns the passed-in data so callers see the filled values.
+async function ensureGenFields(docRef, data) {
+    const updates = {};
+    for (const g of GENS) {
+        if (data[g.field] == null) {
+            updates[g.field] = emptyGenString(g);
+        }
+    }
+    if (Object.keys(updates).length > 0) {
+        console.log(`Backfilling gen fields for user: ${Object.keys(updates).join(', ')}`);
+        await docRef.update(updates);
+        Object.assign(data, updates);
+    }
+    return data;
+}
+
+function decodeGen(data, g) {
+    return compactStringToBooleans(data[g.field] ?? emptyGenString(g), genCount(g));
+}
+
+function countCaught(data) {
+    return GENS.reduce((sum, g) => sum + decodeGen(data, g).filter(x => x !== 0).length, 0);
+}
+
+function caughtGlobalIds(data) {
+    const ids = [];
+    for (const g of GENS) {
+        const bits = decodeGen(data, g);
+        for (let i = 0; i < bits.length; i++) {
+            if (bits[i] === 1) ids.push(g.start + i);
+        }
+    }
+    return ids;
+}
+
+function hasCaught(data, pokemonId) {
+    const g = genForId(pokemonId);
+    if (!g) return false;
+    return decodeGen(data, g)[pokemonId - g.start] === 1;
+}
+
 async function handlePokemonGame(authorId, displayName) {
     const docRef = db.collection("users").doc(authorId);
     let doc = await docRef.get();
@@ -28,30 +105,26 @@ async function handlePokemonGame(authorId, displayName) {
         await initializeDB(authorId, docRef);
         doc = await docRef.get();
     }
+    const data = await ensureGenFields(docRef, doc.data());
     if (!shouldCatch(authorId)) {
         console.log(`No catch for ${authorId}`);
         return null;
     }
     console.log(`Catching pokemon for ${authorId}`);
-    const indexToFlip = Math.floor(Math.random() * 151);
-    console.log(`index for ${authorId}: ${indexToFlip}`);
-    const pokemonToCatch = indexToFlip + 1;
-    console.log(`pokemon number for ${authorId}: ${pokemonToCatch}`);
-    const data = doc.data().pokemon;
-    console.log(`Encoded data for ${authorId}: ${data}`);
-    const bitArray = compactStringToBooleans(data);
-    console.log(`Decoded data for ${authorId}: ${bitArray}`);
-    if (bitArray[indexToFlip] === 0) {
-        console.log(`Flipping value at ${indexToFlip} for ${authorId}`);
-        bitArray[indexToFlip] = 1;
-        console.log(`New decoded data for ${authorId}: ${bitArray}`);
+    const { gen, localIndex, pokemonId } = randomGlobalPokemon();
+    console.log(`pokemon number for ${authorId}: ${pokemonId} (gen ${gen.gen}, ${gen.field}[${localIndex}])`);
+    const bitArray = decodeGen(data, gen);
+    console.log(`Decoded ${gen.field} for ${authorId}: ${bitArray}`);
+    if (bitArray[localIndex] === 0) {
+        console.log(`Flipping value at ${localIndex} of ${gen.field} for ${authorId}`);
+        bitArray[localIndex] = 1;
         const encoded = booleansToCompactString(bitArray);
-        console.log(`New Encoded data for ${authorId}: ${data}`);
+        console.log(`New Encoded ${gen.field} for ${authorId}: ${encoded}`);
         await docRef.update({
-            pokemon: encoded,
+            [gen.field]: encoded,
         });
     }
-    const pokemon = await getPokemon(pokemonToCatch);
+    const pokemon = await getPokemon(pokemonId);
     console.log('pokemon', pokemon);
     return getEmbed(displayName, pokemon);
 }
@@ -69,30 +142,28 @@ function getEmbed(displayName, pokemon) {
 }
 
 async function getPokemonStats(authorId) {
-    const bitArray = await getPokemonForUser(authorId);
-    if (bitArray == null) {
+    const data = await getUserData(authorId);
+    if (data == null) {
         return "You've caught 0 Pokémon. Get to work champ";
     }
-    const count = bitArray.filter(x => x !== 0).length;
+    const count = countCaught(data);
     console.log(`Caught count for ${authorId}: ${count}`);
-    if (count === 151) {
+    if (count === TOTAL_POKEMON) {
         return "You've caught them all. You are the very best, like no one ever was!";
     }
     return `You've caught ${count} Pokémon`;
 }
 
-async function getPokemonForUser(userId) {
+// Returns the full user doc data (with gen fields backfilled), or null if the
+// user has no entry yet.
+async function getUserData(userId) {
     console.log(`Query for userId ${userId}`);
     const docRef = db.collection("users").doc(userId);
-    const doc = await docRef.get();;
+    const doc = await docRef.get();
     if (!doc.exists) {
         return null;
     }
-    const data = doc.data().pokemon;
-    console.log(`Encoded data for ${userId}: ${data}`);
-    const bitArray = compactStringToBooleans(data);
-    console.log(`Decoded data for ${userId}: ${bitArray}`);
-    return bitArray;
+    return await ensureGenFields(docRef, doc.data());
 }
 
 function shouldCatch(authorId) {
@@ -115,13 +186,12 @@ function shouldCatch(authorId) {
 }
 
 async function initializeDB(authorId, docRef) {
-    const bitArray = Array(151).fill(0);
-    console.log(`Decoded data for ${authorId}: ${bitArray}`);
-    const data = booleansToCompactString(bitArray);
-    console.log(`Encoded data for ${authorId}: ${data}`);
-    await docRef.set({
-        pokemon: data,
-    });
+    const doc = {};
+    for (const g of GENS) {
+        doc[g.field] = emptyGenString(g);
+    }
+    console.log(`Initializing ${authorId} with fields: ${Object.keys(doc).join(', ')}`);
+    await docRef.set(doc);
 }
 
 function booleansToCompactString(flags) {
@@ -201,7 +271,7 @@ async function getPokemonLeaderboard() {
     const snapshot = await usersRef.get();
     let results = snapshot.docs.map(doc => ({
         authorId: doc.id,
-        score: compactStringToBooleans(doc.data().pokemon).filter(x => x !== 0).length
+        score: countCaught(doc.data())
     }));
     results.sort((a, b) => b.score - a.score);
     results = results.slice(0, 11);
@@ -217,12 +287,12 @@ function getEmoji(idx) {
 
 async function queryPokemon(authorId, pokemonId) {
     console.log(`Query for authorId ${authorId}, pokemonId ${pokemonId}`);
-    const bitArray = await getPokemonForUser(authorId);
-    if (bitArray == null) {
+    const data = await getUserData(authorId);
+    if (data == null) {
         return "You've caught 0 Pokémon. Get to work champ";
     }
     const pokemon = await getPokemon(pokemonId);
-    if (bitArray[pokemonId - 1]) {
+    if (hasCaught(data, pokemonId)) {
         return `You've caught ${pokemon.name}!`;
     }
     return `You haven't caught ${pokemon.name}`;
@@ -235,17 +305,19 @@ async function debugPokemon(displayName, pokemonIndex, isShiny) {
 
 async function doPokemonBattle(player1, player2) {
     console.log(`Pokemon battle for ${player1.displayName} vs ${player2.displayName}`);
-    const p1Pokemon = await getPokemonForUser(player1.id);
-    if (p1Pokemon == null) {
+    const p1Data = await getUserData(player1.id);
+    const p1Caught = p1Data == null ? [] : caughtGlobalIds(p1Data);
+    if (p1Caught.length === 0) {
         return { response: `<@${player1.id}> has no Pokémon!`, embed: null };
     }
-    const p2Pokemon = await getPokemonForUser(player2.id);
-    if (p2Pokemon == null) {
+    const p2Data = await getUserData(player2.id);
+    const p2Caught = p2Data == null ? [] : caughtGlobalIds(p2Data);
+    if (p2Caught.length === 0) {
         return { response: `<@${player2.id}> has no Pokémon!`, embed: null };
     }
 
-    const p1PokemonToBattle = selectRandomPokemon(p1Pokemon);
-    const p2PokemonToBattle = selectRandomPokemon(p2Pokemon);
+    const p1PokemonToBattle = selectRandomPokemon(p1Caught);
+    const p2PokemonToBattle = selectRandomPokemon(p2Caught);
 
     const pokemon1 = await getPokemon(p1PokemonToBattle);
     const pokemon2 = await getPokemon(p2PokemonToBattle);
@@ -309,18 +381,12 @@ function simulateQuickBattle(player1, pokemon1, player2, pokemon2) {
   };
 }
 
-function selectRandomPokemon(bitArray) {
-    const ones = [];
-    for (let i = 0; i < bitArray.length; i++) {
-        if (bitArray[i] === 1) {
-            ones.push(i);
-        }
-    }
-    if (ones.length === 0) {
+function selectRandomPokemon(caughtIds) {
+    if (caughtIds.length === 0) {
         return null;
     }
-    const randomPos = Math.floor(Math.random() * ones.length);
-    return ones[randomPos] + 1;
+    const randomPos = Math.floor(Math.random() * caughtIds.length);
+    return caughtIds[randomPos];
 }
 
 async function getBattleEmbed(player1, pokemon1, player2, pokemon2) {
@@ -368,4 +434,5 @@ module.exports = {
     queryPokemon,
     debugPokemon,
     doPokemonBattle,
+    MAX_POKEMON_ID,
 };
