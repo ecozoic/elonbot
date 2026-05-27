@@ -15,8 +15,8 @@ const app = admin.initializeApp({
 });
 const db = getFirestore(app);
 
-const POKEMON_CATCH_RATE = 0.20;
-const SHINY_CATCH_RATE = 0.05;
+const POKEMON_CATCH_RATE = 0.15;
+const SHINY_CATCH_RATE = 0.02;
 const POKEMON_CATCH_ICD = 5; // seconds
 const COOLDOWNS = new Map(); // userID -> timestamp when cooldown ends
 
@@ -237,11 +237,11 @@ async function doPokemonBattle(player1, player2) {
     console.log(`Pokemon battle for ${player1.displayName} vs ${player2.displayName}`);
     const p1Pokemon = await getPokemonForUser(player1.id);
     if (p1Pokemon == null) {
-        return { response: `<@${player1.displayName}> has no Pokémon!`, embed: null };
+        return { response: `<@${player1.id}> has no Pokémon!`, embed: null };
     }
     const p2Pokemon = await getPokemonForUser(player2.id);
     if (p2Pokemon == null) {
-        return { response: `<@${player2.displayName}> has no Pokémon!`, embed: null };
+        return { response: `<@${player2.id}> has no Pokémon!`, embed: null };
     }
 
     const p1PokemonToBattle = selectRandomPokemon(p1Pokemon);
