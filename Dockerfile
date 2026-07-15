@@ -31,6 +31,12 @@ COPY --link . .
 # Final stage for app image
 FROM base
 
+# node-canvas draws chart text via fillText, which needs system fonts + fontconfig.
+# The slim base ships none, so canvas renders text as tofu boxes without these.
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy built application
 COPY --from=build /app /app
 
