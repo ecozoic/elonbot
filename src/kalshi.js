@@ -7,17 +7,26 @@
 
 const BASE = 'https://external-api.kalshi.com/trade-api/v2';
 
-async function kalshiGet(path, params = {}) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// GET with retry/backoff on rate limits (429) and transient 5xx. Kalshi's public
+// limit is ~30 req/s; a full search sweep can approach it, so we self-heal.
+async function kalshiGet(path, params = {}, { retries = 3 } = {}) {
     const url = new URL(BASE + path);
     for (const [k, v] of Object.entries(params)) {
         if (v != null) url.searchParams.set(k, v);
     }
-    const res = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!res.ok) {
+    for (let attempt = 0; ; attempt++) {
+        const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (res.ok) return res.json();
+        const retryable = res.status === 429 || res.status >= 500;
+        if (retryable && attempt < retries) {
+            await sleep(400 * Math.pow(2, attempt)); // 400ms, 800ms, 1600ms
+            continue;
+        }
         const body = await res.text().catch(() => '');
         throw new Error(`Kalshi ${res.status} on ${path}: ${body.slice(0, 200)}`);
     }
-    return res.json();
 }
 
 function num(s) {
@@ -71,13 +80,17 @@ async function getEvent(eventTicker) {
 }
 
 // Best-effort search: page open events client-side and substring-match on title /
-// subtitle. Kalshi has no public full-text search endpoint. Returns up to `limit`
-// single-market (non-multivariate) events with their first market's live price.
-async function searchEvents(query, { limit = 8, maxPages = 4 } = {}) {
+// subtitle. Kalshi has no public full-text search endpoint. maxPages is high
+// enough (200/page) to cover the entire flat open-events feed (~2-3k events) so
+// we don't silently miss matches; it early-exits once `limit` matches are found.
+// NOTE: individual sports-game markets are NOT in the flat feed — Kalshi only
+// exposes them by exact ticker/series — so those won't appear in search results.
+async function searchEvents(query, { limit = 8, maxPages = 12 } = {}) {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
     const matches = [];
     let cursor;
     for (let page = 0; page < maxPages && matches.length < limit; page++) {
+        if (page > 0) await sleep(120); // throttle the sweep to stay well under ~30 req/s
         const data = await kalshiGet('/events', { status: 'open', limit: 200, cursor });
         for (const ev of data.events || []) {
             if (isMultivariate(ev.event_ticker)) continue;
