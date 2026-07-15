@@ -1,19 +1,8 @@
 const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const {createCanvas, loadImage} = require('canvas');
-const { getFirestore } = require("firebase-admin/firestore");
-const admin = require('firebase-admin');
+const { db } = require('./firebase.js');
 
 const TYPE_CHART = require('./pokemon-type-chart.js');
-
-const jsonString = Buffer.from(
-    process.env.FIREBASE_CREDENTIALS_BASE64,
-    'base64'
-).toString('utf8');
-const credential = admin.credential.cert(JSON.parse(jsonString));
-const app = admin.initializeApp({
-    credential,
-});
-const db = getFirestore(app);
 
 const POKEMON_CATCH_RATE = 0.15;
 const SHINY_CATCH_RATE = 0.02;
